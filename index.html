@@ -188,10 +188,8 @@
     #siteHeader {
       padding-top: env(safe-area-inset-top);
       transform: translate3d(0, 0, 0);
-      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
       will-change: transform;
     }
-    body.header-hidden #siteHeader { transform: translate3d(0, calc(-1 * var(--hide-shift)), 0); }
     #headerSpacer { height: calc(var(--brand-h) + env(safe-area-inset-top)); }
     #headerPills { display: none; }
     #siteHeader.show-pills #headerPills { display: block; }
@@ -207,7 +205,7 @@
   <!-- ========================================================================
        1. ШАПКА (STICKY HEADER С ЭФФЕКТОМ МАТОВОГО СТЕКЛА + ПРИМЕРКА БРЕНДА)
        ======================================================================== -->
-  <header id="siteHeader" class="fixed top-0 inset-x-0 z-40 bg-[#FBFBFD]/90 backdrop-blur-xl border-b border-[#E5E5EA]">
+  <header id="siteHeader" class="fixed top-0 inset-x-0 z-40 bg-[#FBFBFD] border-b border-[#E5E5EA]">
     <div id="headerBrandRow" class="max-w-6xl mx-auto px-4 sm:px-6 py-3 relative">
       <div class="flex items-center justify-between gap-2.5">
         
@@ -2366,7 +2364,10 @@
       });
     }
 
-    /* Автоскрытие шапки: вниз — прячем, вверх — показываем */
+    /* Автоскрытие шапки, как адресная строка в мобильном Chrome:
+       шапка едет вверх ВМЕСТЕ с пальцем (по 1 px на 1 px прокрутки), без CSS-анимаций,
+       а когда палец отпустили — плавно доезжает до «показана» или «спрятана».
+       Так это работает одинаково плавно и на iPhone, и на Android, и на ПК. */
     function setupAutoHideHeader() {
       const header = document.getElementById('siteHeader');
       const brand = document.getElementById('headerBrandRow');
@@ -2378,28 +2379,48 @@
       new ResizeObserver(syncHeight).observe(brand);
 
       let lastY = window.scrollY;
-      const update = () => {
-        const y = Math.max(0, window.scrollY);
-        const delta = y - lastY;
-        const brandBottom = brand.offsetTop + brand.offsetHeight; // низ строки с логотипом (с учётом выреза)
+      let offset = 0;          // на сколько px шапка сейчас уехала вверх
+      let snapTimer = null;
 
+      const apply = (px, animate) => {
+        header.style.transition = animate ? 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+        header.style.transform = `translate3d(0, ${-px}px, 0)`;
+      };
+
+      const update = () => {
+        const maxScroll = Math.max(0, root.scrollHeight - window.innerHeight);
+        const y = Math.min(Math.max(0, window.scrollY), maxScroll); // без «резинки» iOS
+        const delta = y - lastY;
+        lastY = y;
+
+        const brandBottom = brand.offsetTop + brand.offsetHeight;
         // Категории в шапке показываем, когда обычные уехали под неё
         const showPills = !!inlineNav && inlineNav.getBoundingClientRect().bottom <= brandBottom;
         header.classList.toggle('show-pills', showPills);
-        // Если категории в шапке видны — прячем только строку с логотипом, иначе всю шапку
-        root.style.setProperty('--hide-shift', showPills ? brand.offsetHeight + 'px' : '100%');
+        // С категориями прячем только строку с логотипом, без них — всю шапку
+        const maxShift = showPills ? brand.offsetHeight : header.offsetHeight;
 
         const popoverOpen = !document.getElementById('brandCustomizerPopover').classList.contains('hidden');
-        if (y < brandBottom + 20 || popoverOpen) {
-          document.body.classList.remove('header-hidden');        // у самого верха шапка всегда видна
-        } else if (delta > 6) {
-          document.body.classList.add('header-hidden');           // листаем вниз
-        } else if (delta < -6) {
-          document.body.classList.remove('header-hidden');        // листаем вверх
+        if (popoverOpen) {
+          offset = 0;
+        } else {
+          offset = Math.min(Math.max(offset + delta, 0), maxShift);
+          offset = Math.min(offset, y); // у самого верха страницы шапка всегда видна
         }
-        if (Math.abs(delta) > 6) lastY = y;
+        apply(offset, false);
+
+        // Палец отпустили — доводим до ближайшего крайнего положения
+        clearTimeout(snapTimer);
+        snapTimer = setTimeout(() => {
+          if (offset > 0 && offset < maxShift) {
+            offset = (offset > maxShift / 2 && y > maxShift) ? maxShift : 0;
+            apply(offset, true);
+          }
+        }, 140);
       };
+
       window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update, { passive: true });
       update();
     }
 
