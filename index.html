@@ -180,6 +180,23 @@
 
     /* Демо-элементы (примерка бренда) видны только по ссылке ?demo=1 */
     body:not(.is-demo) .demo-only { display: none !important; }
+
+    /* Шапка прячется при прокрутке вниз и возвращается при прокрутке вверх */
+    :root { --header-h: 68px; }
+    #siteHeader {
+      padding-top: env(safe-area-inset-top);
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    body.header-hidden #siteHeader { transform: translateY(-100%); }
+    #categoryNav {
+      top: var(--header-h);
+      transition: top 0.28s cubic-bezier(0.22, 1, 0.36, 1), padding-top 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    body.header-hidden #categoryNav {
+      top: 0;
+      padding-top: calc(12px + env(safe-area-inset-top));
+    }
   </style>
 </head>
 <body class="pb-28 selection:bg-[#1D1D1F] selection:text-white">
@@ -187,7 +204,7 @@
   <!-- ========================================================================
        1. ШАПКА (STICKY HEADER С ЭФФЕКТОМ МАТОВОГО СТЕКЛА + ПРИМЕРКА БРЕНДА)
        ======================================================================== -->
-  <header class="sticky top-0 z-40 bg-[#FBFBFD]/85 backdrop-blur-xl border-b border-[#E5E5EA]">
+  <header id="siteHeader" class="sticky top-0 z-40 bg-[#FBFBFD]/85 backdrop-blur-xl border-b border-[#E5E5EA]">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 relative">
       <div class="flex items-center justify-between gap-2.5">
         
@@ -457,7 +474,7 @@
     <!-- ========================================================================
          3. ЛИПКАЯ НАВИГАЦИЯ ПО КАТЕГОРИЯМ (STICKY IOS PILLS)
          ======================================================================== -->
-    <nav aria-label="Категории меню" class="sticky top-[68px] sm:top-[76px] z-30 -mx-4 px-4 sm:mx-0 sm:px-0 py-3 bg-[#FBFBFD]/90 backdrop-blur-xl">
+    <nav id="categoryNav" aria-label="Категории меню" class="sticky z-30 -mx-4 px-4 sm:mx-0 sm:px-0 py-3 bg-[#FBFBFD]/90 backdrop-blur-xl">
       <div id="categoryPills" class="h-scroll flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
         <!-- Таблетки категорий рендерятся из SITE_CONFIG.categories -->
       </div>
@@ -2332,8 +2349,39 @@
       });
     }
 
+    /* Автоскрытие шапки: вниз — прячем, вверх — показываем */
+    function setupAutoHideHeader() {
+      const header = document.getElementById('siteHeader');
+      if (!header) return;
+      const root = document.documentElement;
+      const syncHeight = () => root.style.setProperty('--header-h', header.offsetHeight + 'px');
+      syncHeight();
+      new ResizeObserver(syncHeight).observe(header);
+
+      let lastY = window.scrollY;
+      let ticking = false;
+      const update = () => {
+        ticking = false;
+        const y = Math.max(0, window.scrollY);
+        const delta = y - lastY;
+        const popoverOpen = !document.getElementById('brandCustomizerPopover').classList.contains('hidden');
+        if (y < header.offsetHeight + 20 || popoverOpen) {
+          document.body.classList.remove('header-hidden');        // у самого верха шапка всегда видна
+        } else if (delta > 6) {
+          document.body.classList.add('header-hidden');           // листаем вниз
+        } else if (delta < -6) {
+          document.body.classList.remove('header-hidden');        // листаем вверх
+        }
+        if (Math.abs(delta) > 6) lastY = y;
+      };
+      window.addEventListener('scroll', () => {
+        if (!ticking) { ticking = true; requestAnimationFrame(update); }
+      }, { passive: true });
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       if (DEMO_MODE) document.body.classList.add('is-demo');
+      setupAutoHideHeader();
 
       // Телефон и часы работы из настроек
       document.getElementById('headerPhoneLink').href = `tel:${SITE_CONFIG.phoneRaw}`;
