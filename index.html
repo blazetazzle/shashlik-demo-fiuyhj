@@ -181,23 +181,20 @@
     /* Демо-элементы (примерка бренда) видны только по ссылке ?demo=1 */
     body:not(.is-demo) .demo-only { display: none !important; }
 
-    /* Шапка прячется при прокрутке вниз и возвращается при прокрутке вверх */
-    :root { --header-h: 68px; }
+    /* Шапка: position fixed + transform — только так iPhone анимирует её плавно
+       (sticky + transform на iOS «висит», а потом отпрыгивает).
+       Вниз — строка с логотипом уезжает, вверх — возвращается. */
+    :root { --brand-h: 68px; --hide-shift: 100%; }
     #siteHeader {
       padding-top: env(safe-area-inset-top);
-      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      transform: translate3d(0, 0, 0);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
       will-change: transform;
     }
-    body.header-hidden #siteHeader { transform: translate3d(0, -100%, 0); }
-    /* Только transform: его iPhone анимирует плавно (top/padding дёргаются) */
-    #categoryNav {
-      top: var(--header-h);
-      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-      will-change: transform;
-    }
-    body.nav-lifted #categoryNav {
-      transform: translate3d(0, calc(env(safe-area-inset-top) - var(--header-h)), 0);
-    }
+    body.header-hidden #siteHeader { transform: translate3d(0, calc(-1 * var(--hide-shift)), 0); }
+    #headerSpacer { height: calc(var(--brand-h) + env(safe-area-inset-top)); }
+    #headerPills { display: none; }
+    #siteHeader.show-pills #headerPills { display: block; }
     /* Полоска под статус-баром/панелью браузера, чтобы контент не просвечивал */
     body::before {
       content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 45;
@@ -210,8 +207,8 @@
   <!-- ========================================================================
        1. ШАПКА (STICKY HEADER С ЭФФЕКТОМ МАТОВОГО СТЕКЛА + ПРИМЕРКА БРЕНДА)
        ======================================================================== -->
-  <header id="siteHeader" class="sticky top-0 z-40 bg-[#FBFBFD]/85 backdrop-blur-xl border-b border-[#E5E5EA]">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 relative">
+  <header id="siteHeader" class="fixed top-0 inset-x-0 z-40 bg-[#FBFBFD]/90 backdrop-blur-xl border-b border-[#E5E5EA]">
+    <div id="headerBrandRow" class="max-w-6xl mx-auto px-4 sm:px-6 py-3 relative">
       <div class="flex items-center justify-between gap-2.5">
         
         <!-- Левая часть: интерактивный бейдж [ ВАШ ЛОГО ] + название и адрес -->
@@ -427,7 +424,13 @@
       </div>
 
     </div>
+
+    <!-- Категории внутри шапки: появляются, когда обычные категории уехали под шапку -->
+    <div id="headerPills" class="max-w-6xl mx-auto px-4 sm:px-6 pb-2.5">
+      <div id="categoryPillsFixed" class="h-scroll flex items-center gap-2 overflow-x-auto no-scrollbar"></div>
+    </div>
   </header>
+  <div id="headerSpacer" aria-hidden="true"></div>
 
   <!-- Всплывающее уведомление (Toast) без использования alert() -->
   <div id="toastBanner" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
@@ -480,8 +483,7 @@
     <!-- ========================================================================
          3. ЛИПКАЯ НАВИГАЦИЯ ПО КАТЕГОРИЯМ (STICKY IOS PILLS)
          ======================================================================== -->
-    <div id="navSentinel" aria-hidden="true"></div>
-    <nav id="categoryNav" aria-label="Категории меню" class="sticky z-30 -mx-4 px-4 sm:mx-0 sm:px-0 py-3 bg-[#FBFBFD]/90 backdrop-blur-xl">
+    <nav id="categoryNav" aria-label="Категории меню" class="-mx-4 px-4 sm:mx-0 sm:px-0 py-3">
       <div id="categoryPills" class="h-scroll flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
         <!-- Таблетки категорий рендерятся из SITE_CONFIG.categories -->
       </div>
@@ -1514,8 +1516,7 @@
        ЛИПКАЯ НАВИГАЦИЯ ПО КАТЕГОРИЯМ (STICKY IOS PILLS)
        ========================================================================== */
     function renderCategoryPills() {
-      const container = document.getElementById('categoryPills');
-      container.innerHTML = SITE_CONFIG.categories.map(cat => {
+      const html = SITE_CONFIG.categories.map(cat => {
         const isActive = cat.id === state.activeCategory;
         return `
           <button
@@ -1532,6 +1533,10 @@
           </button>
         `;
       }).join('');
+      ['categoryPills', 'categoryPillsFixed'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+      });
     }
 
     function setActiveCategoryPill(catId) {
@@ -1541,7 +1546,12 @@
         const isMatch = btn.getAttribute('data-cat-pill') === catId;
         if (isMatch) {
           btn.className = 'px-4 py-2 rounded-full text-[13.5px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 bg-[#1D1D1F] text-white shadow-sm';
-          btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          // Крутим только ленту по горизонтали (scrollIntoView дёргал бы всю страницу)
+          const box = btn.parentElement;
+          if (box && box.clientWidth) {
+            const offset = btn.getBoundingClientRect().left - box.getBoundingClientRect().left;
+            box.scrollTo({ left: box.scrollLeft + offset - (box.clientWidth - btn.offsetWidth) / 2, behavior: 'smooth' });
+          }
         } else {
           btn.className = 'px-4 py-2 rounded-full text-[13.5px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 bg-white text-[#1D1D1F] hover:bg-[#F5F5F7] border border-[#E5E5EA]';
         }
@@ -2359,18 +2369,28 @@
     /* Автоскрытие шапки: вниз — прячем, вверх — показываем */
     function setupAutoHideHeader() {
       const header = document.getElementById('siteHeader');
-      if (!header) return;
+      const brand = document.getElementById('headerBrandRow');
+      const inlineNav = document.getElementById('categoryNav');
+      if (!header || !brand) return;
       const root = document.documentElement;
-      const syncHeight = () => root.style.setProperty('--header-h', header.offsetHeight + 'px');
+      const syncHeight = () => root.style.setProperty('--brand-h', brand.offsetHeight + 'px');
       syncHeight();
-      new ResizeObserver(syncHeight).observe(header);
+      new ResizeObserver(syncHeight).observe(brand);
 
       let lastY = window.scrollY;
       const update = () => {
         const y = Math.max(0, window.scrollY);
         const delta = y - lastY;
+        const brandBottom = brand.offsetTop + brand.offsetHeight; // низ строки с логотипом (с учётом выреза)
+
+        // Категории в шапке показываем, когда обычные уехали под неё
+        const showPills = !!inlineNav && inlineNav.getBoundingClientRect().bottom <= brandBottom;
+        header.classList.toggle('show-pills', showPills);
+        // Если категории в шапке видны — прячем только строку с логотипом, иначе всю шапку
+        root.style.setProperty('--hide-shift', showPills ? brand.offsetHeight + 'px' : '100%');
+
         const popoverOpen = !document.getElementById('brandCustomizerPopover').classList.contains('hidden');
-        if (y < header.offsetHeight + 20 || popoverOpen) {
+        if (y < brandBottom + 20 || popoverOpen) {
           document.body.classList.remove('header-hidden');        // у самого верха шапка всегда видна
         } else if (delta > 6) {
           document.body.classList.add('header-hidden');           // листаем вниз
@@ -2378,15 +2398,9 @@
           document.body.classList.remove('header-hidden');        // листаем вверх
         }
         if (Math.abs(delta) > 6) lastY = y;
-
-        // Категории поднимаем, только когда они уже прилипли к верху,
-        // иначе они «прыгнут» поверх первого экрана
-        const hidden = document.body.classList.contains('header-hidden');
-        const sentinel = document.getElementById('navSentinel');
-        const navStuck = sentinel && sentinel.getBoundingClientRect().top <= header.offsetHeight + 1;
-        document.body.classList.toggle('nav-lifted', hidden && navStuck);
       };
       window.addEventListener('scroll', update, { passive: true });
+      update();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -2422,6 +2436,7 @@
 
       enableHorizontalScroll(document.getElementById('upsellCarousel'));
       enableHorizontalScroll(document.getElementById('categoryPills'));
+      enableHorizontalScroll(document.getElementById('categoryPillsFixed'));
     });
   </script>
 </body>
