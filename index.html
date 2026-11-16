@@ -188,14 +188,20 @@
       transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
       will-change: transform;
     }
-    body.header-hidden #siteHeader { transform: translateY(-100%); }
+    body.header-hidden #siteHeader { transform: translate3d(0, -100%, 0); }
+    /* Только transform: его iPhone анимирует плавно (top/padding дёргаются) */
     #categoryNav {
       top: var(--header-h);
-      transition: top 0.28s cubic-bezier(0.22, 1, 0.36, 1), padding-top 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
     }
-    body.header-hidden #categoryNav {
-      top: 0;
-      padding-top: calc(12px + env(safe-area-inset-top));
+    body.nav-lifted #categoryNav {
+      transform: translate3d(0, calc(env(safe-area-inset-top) - var(--header-h)), 0);
+    }
+    /* Полоска под статус-баром/панелью браузера, чтобы контент не просвечивал */
+    body::before {
+      content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 45;
+      height: env(safe-area-inset-top); background: #FBFBFD; pointer-events: none;
     }
   </style>
 </head>
@@ -474,6 +480,7 @@
     <!-- ========================================================================
          3. ЛИПКАЯ НАВИГАЦИЯ ПО КАТЕГОРИЯМ (STICKY IOS PILLS)
          ======================================================================== -->
+    <div id="navSentinel" aria-hidden="true"></div>
     <nav id="categoryNav" aria-label="Категории меню" class="sticky z-30 -mx-4 px-4 sm:mx-0 sm:px-0 py-3 bg-[#FBFBFD]/90 backdrop-blur-xl">
       <div id="categoryPills" class="h-scroll flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
         <!-- Таблетки категорий рендерятся из SITE_CONFIG.categories -->
@@ -2371,6 +2378,13 @@
           document.body.classList.remove('header-hidden');        // листаем вверх
         }
         if (Math.abs(delta) > 6) lastY = y;
+
+        // Категории поднимаем, только когда они уже прилипли к верху,
+        // иначе они «прыгнут» поверх первого экрана
+        const hidden = document.body.classList.contains('header-hidden');
+        const sentinel = document.getElementById('navSentinel');
+        const navStuck = sentinel && sentinel.getBoundingClientRect().top <= header.offsetHeight + 1;
+        document.body.classList.toggle('nav-lifted', hidden && navStuck);
       };
       window.addEventListener('scroll', update, { passive: true });
     }
