@@ -2359,9 +2359,7 @@
       new ResizeObserver(syncHeight).observe(header);
 
       let lastY = window.scrollY;
-      let ticking = false;
       const update = () => {
-        ticking = false;
         const y = Math.max(0, window.scrollY);
         const delta = y - lastY;
         const popoverOpen = !document.getElementById('brandCustomizerPopover').classList.contains('hidden');
@@ -2374,9 +2372,7 @@
         }
         if (Math.abs(delta) > 6) lastY = y;
       };
-      window.addEventListener('scroll', () => {
-        if (!ticking) { ticking = true; requestAnimationFrame(update); }
-      }, { passive: true });
+      window.addEventListener('scroll', update, { passive: true });
     }
 
     window.addEventListener('DOMContentLoaded', () => {
